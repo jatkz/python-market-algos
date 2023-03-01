@@ -1,5 +1,5 @@
 import os
-from flask import Flask
+from flask import Flask, jsonify
 from pymongo import MongoClient
 import pandas as pd
 from ta.momentum import rsi
@@ -45,21 +45,27 @@ def get_rsi(collection, symbol, window):
     Returns:
         _type_: _description_
     """
-    if collection not in collections:
-        return {"error": "Invalid collection"}
     try:
-        window = int(window)
-    except ValueError:
-        return {"error": "Invalid n"}
-    symbol = collections[collection].find_one({"symbol": symbol})
-    if not symbol:
-        return {"error": "Invalid symbol"}
-    if not symbol["candles"] or len(symbol["candles"]) < window:
-        return {"error": "No candles"}
-    dataframe = pd.DataFrame(list(symbol["candles"]))
-    dataframe["rsi"] = rsi(close=dataframe["close"], window=window, fillna=True)
-    return dataframe[["rsi", "datetime"]].to_json(orient="records")
+        try:
+            window = int(window)
+        except ValueError:
+            raise ValueError("Invalid n")
 
+        # TODO make this reusable
+        if collection not in collections:
+            raise ValueError("Invalid collection")
+        symbol = collections[collection].find_one({"symbol": symbol})
+        if not symbol:
+            raise ValueError("Invalid symbol")
+        if not symbol["candles"] or len(symbol["candles"]) < window:
+            raise ValueError("Not enough candles")
+
+
+        dataframe = pd.DataFrame(list(symbol["candles"]))
+        dataframe["rsi"] = rsi(close=dataframe["close"], window=window, fillna=True)
+        return dataframe[["rsi", "datetime"]].to_json(orient="records")
+    except Exception as e:
+        return jsonify(error=str(e)), 500
 
 @app.route("/create", methods=["POST"])
 def create():
@@ -94,12 +100,3 @@ def update(id):
 
     # Return success message
     return jsonify({"message": "Data updated successfully", "id": id})
-
-
-@app.route("/delete/<id>", methods=["DELETE"])
-def delete(id):
-    # Delete data from MongoDB
-    result = collection.delete_one({"_id": ObjectId(id)})
-
-    # Return success message
-    return jsonify({"message": "Data deleted successfully", "id": id})
