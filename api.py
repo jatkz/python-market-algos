@@ -141,6 +141,7 @@ def get_macd(collection, symbol, fast, slow, signal):
     except Exception as exception:
         return jsonify(error=str(exception)), 500
 
+
 @app.route("/<collection>/<symbol>/bollinger/<window>/<std>", methods=["GET"])
 def get_bollinger(collection, symbol, window, std):
     """_summary_
@@ -171,31 +172,6 @@ def get_bollinger(collection, symbol, window, std):
         return dataframe[["bollinger", "datetime"]].to_json(orient="records")
     except Exception as exception:
         return jsonify(error=str(exception)), 500
-
-@app.route("/create", methods=["POST"])
-def create():
-    # Get data from request
-    data = request.get_json()
-
-    # Insert data into MongoDB
-    result = collection.insert_one(data)
-
-    # Return success message
-    return jsonify(
-        {"message": "Data created successfully", "id": str(result.inserted_id)}
-    )
-
-
-@app.route("/update/<id>", methods=["PUT"])
-def update(id):
-    # Get data from request
-    data = request.get_json()
-
-    # Update data in MongoDB
-    result = collection.update_one({"_id": ObjectId(id)}, {"$set": data})
-
-    # Return success message
-    return jsonify({"message": "Data updated successfully", "id": id})
 
 
 if __name__ == "__main__":
