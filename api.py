@@ -170,8 +170,8 @@ def get_bollinger(collection, symbol, window, std):
     except Exception as exception:
         return jsonify(error=str(exception)), 500
 
-@app.route("/<collection>/<symbol>/maxprofit/<window>", methods=["GET"])
-def get_max_profit(collection, symbol, window):
+@app.route("/<collection>/<symbol>/maxpump/<window>", methods=["GET"])
+def get_max_pump(collection, symbol, window):
     """_summary_
 
     Args:
@@ -192,9 +192,39 @@ def get_max_profit(collection, symbol, window):
         if len(candles) < window:
             raise ValueError("Not enough candles")
 
-        candles["maxprofit"] = candles["high"].rolling(window=window*-1).max()
+        candles["maxhigh"] = candles["high"].rolling(window=window*-1).max()
+        candles["maxpump"] = (candles["maxhigh"] - candles["close"]) / candles["close"]
         candles = dropna(candles)
-        return candles[["maxprofit", "datetime"]].to_json(orient="records")
+        return candles[["maxpump", "datetime"]].to_json(orient="records")
+    except Exception as exception:
+        return jsonify(error=str(exception)), 500
+
+@app.route("/<collection>/<symbol>/maxdump/<window>", methods=["GET"])
+def get_max_dump(collection, symbol, window):
+    """_summary_
+
+    Args:
+        collection (_type_): _description_
+        symbol (_type_): _description_
+        window (_type_): _description_
+
+    Returns:
+        _type_: _description_
+    """
+    try:
+        try:
+            window = int(window)
+        except ValueError:
+            raise ValueError("Invalid integer parameters passed", window)
+
+        candles = query_candle(collection, symbol)
+        if len(candles) < window:
+            raise ValueError("Not enough candles")
+
+        candles["minlow"] = candles["low"].rolling(window=window*-1).min()
+        candles["maxdump"] = (candles["minlow"] - candles["close"]) / candles["close"]
+        candles = dropna(candles)
+        return candles[["maxdump", "datetime"]].to_json(orient="records")
     except Exception as exception:
         return jsonify(error=str(exception)), 500
 
