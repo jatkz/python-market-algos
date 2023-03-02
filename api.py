@@ -16,7 +16,10 @@ import os
 from flask import Flask, jsonify
 from pymongo import MongoClient
 import pandas as pd
-from ta.momentum import rsi
+from ta.momentum import rsi, macd
+from ta.volatility import bollinger
+from ta.utils import dropna
+
 
 app = Flask(__name__)
 
@@ -99,10 +102,75 @@ def get_rsi(collection, symbol, window):
 
         dataframe = pd.DataFrame(candles)
         dataframe["rsi"] = rsi(close=dataframe["close"], window=window, fillna=True)
+        # dataframe = dropna(dataframe)
         return dataframe[["rsi", "datetime"]].to_json(orient="records")
     except Exception as exception:
         return jsonify(error=str(exception)), 500
 
+
+@app.route("/<collection>/<symbol>/macd/<fast>/<slow>/<signal>", methods=["GET"])
+def get_macd(collection, symbol, fast, slow, signal):
+    """_summary_
+
+    Args:
+        collection (_type_): _description_
+        symbol (_type_): _description_
+        fast (_type_): _description_
+        slow (_type_): _description_
+        signal (_type_): _description_
+
+    Returns:
+        _type_: _description_
+    """
+    try:
+        try:
+            fast = int(fast)
+            slow = int(slow)
+            signal = int(signal)
+        except ValueError:
+            raise ValueError("Invalid integer parameters passed", fast, slow, signal)
+
+        candles = query_candle(collection, symbol)
+        if len(candles) < slow:
+            raise ValueError("Not enough candles")
+
+        dataframe = pd.DataFrame(candles)
+        dataframe["macd"] = macd(close=dataframe["close"], fast=fast, slow=slow, signal=signal, fillna=True)
+        # dataframe = dropna(dataframe)
+        return dataframe[["macd", "datetime"]].to_json(orient="records")
+    except Exception as exception:
+        return jsonify(error=str(exception)), 500
+
+@app.route("/<collection>/<symbol>/bollinger/<window>/<std>", methods=["GET"])
+def get_bollinger(collection, symbol, window, std):
+    """_summary_
+
+    Args:
+        collection (_type_): _description_
+        symbol (_type_): _description_
+        window (_type_): _description_
+        std (_type_): _description_
+
+    Returns:
+        _type_: _description_
+    """
+    try:
+        try:
+            window = int(window)
+            std = int(std)
+        except ValueError:
+            raise ValueError("Invalid integer parameters passed", window, std)
+
+        candles = query_candle(collection, symbol)
+        if len(candles) < window:
+            raise ValueError("Not enough candles")
+
+        dataframe = pd.DataFrame(candles)
+        dataframe["bollinger"] = bollinger(close=dataframe["close"], window=window, std=std, fillna=True)
+        # dataframe = dropna(dataframe)
+        return dataframe[["bollinger", "datetime"]].to_json(orient="records")
+    except Exception as exception:
+        return jsonify(error=str(exception)), 500
 
 @app.route("/create", methods=["POST"])
 def create():
@@ -116,15 +184,6 @@ def create():
     return jsonify(
         {"message": "Data created successfully", "id": str(result.inserted_id)}
     )
-
-
-@app.route("/read", methods=["GET"])
-def read():
-    # Find all data in MongoDB
-    result = collection.find()
-
-    # Convert result to list and jsonify it
-    return jsonify(list(result))
 
 
 @app.route("/update/<id>", methods=["PUT"])
