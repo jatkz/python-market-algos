@@ -1,3 +1,17 @@
+"""
+This module provides an api for candle metrics
+
+
+    
+    Note that the debug=True option in app.run() enables debug mode,
+    which provides more detailed error messages and auto-reloads the
+    app when changes are made to the code. You should not use debug mode
+    in production, as it can expose security vulnerabilities and other
+    issues. Instead, you should use a production-ready web server such as
+    Gunicorn or uWSGI to deploy your app.
+    
+"""
+
 import os
 from flask import Flask, jsonify
 from pymongo import MongoClient
@@ -6,34 +20,62 @@ from ta.momentum import rsi
 
 app = Flask(__name__)
 
-# MongoDB configuration
-MONGODB_URI = os.environ.get(
-    "MONGODB_URI"
-)  # This should be set in your production environment
-MONGODB_DB = os.environ.get("MONGODB_DB", "mydatabase")
-MONGODB_COLLECTION = os.environ.get("MONGODB_COLLECTION", "mycollection")
-MONGODB_USERNAME = os.environ.get("MONGODB_USERNAME")
-MONGODB_PASSWORD = os.environ.get("MONGODB_PASSWORD")
 
-# Production options for MongoDB connection
-MONGODB_OPTIONS = {
-    "retryWrites": True,  # retry writes in case of network failures
-    "w": "majority",  # wait for majority write acknowledgement
-    "ssl": True,  # use SSL for secure connection
-    "ssl_cert_reqs": "CERT_NONE",  # do not require SSL certificate validation
-}
+def mongo_connection():
+    """_summary_
 
-# Connect to MongoDB
-client = MongoClient(
-    MONGODB_URI, username=MONGODB_USERNAME, password=MONGODB_PASSWORD, **MONGODB_OPTIONS
-)
-db = client[MONGODB_DB]
-short = db[MONGODB_COLLECTION]
+    Returns:
+        _type_: map of collections
+    """
+    # MongoDB configuration
+    MONGO_URI = os.environ.get(
+        "MONGO_URI"
+    )  # This should be set in your production environment
+    MONGO_DB = os.environ.get("MONGODB_DB", "tdameritrade")  # Default to test database
 
-collections = {"Short": db["Short"], "Medium": db["Medium"], "Macros": db["Macros"]}
+    # Production options for MongoDB connection
+    MONGODB_OPTIONS = {
+        "retryWrites": True,  # retry writes in case of network failures
+        "w": "majority",  # wait for majority write acknowledgement
+        "maxPoolSize": 5,  # maximum number of connections in the connection pool
+        "minPoolSize": 1,  # minimum number of connections in the connection pool
+        "connectTimeoutMS": 5000,  # maximum time to establish a connection
+        "maxIdleTimeMS": 30000,  # maximum time a connection can remain idle
+        # "ssl": True,  # use SSL for secure connection
+        # "ssl_cert_reqs": "CERT_NONE",  # do not require SSL certificate validation
+    }
+
+    # Connect to MongoDB
+    client = MongoClient(MONGO_URI, **MONGODB_OPTIONS)
+    db = client[MONGO_DB]
+    collections = {"Short": db["Short"], "Medium": db["Medium"], "Macros": db["Macros"]}
+    return collections
 
 
-@app.route("<collection>/<symbol>/rsi/<window>", methods=["GET"])
+collections = mongo_connection()
+
+
+def query_candle(collection, symbol_name):
+    """_summary_
+
+    Args:
+        collection (str): mongo db collection name
+        symbol (str): name such as "TSLA"
+
+    Returns:
+        _type_: list of candles in json format ohlc, volume, datetime
+    """
+    if collection not in collections:
+        raise ValueError("Invalid collection")
+    symbol = collections[collection].find_one({"symbol": symbol_name})
+    if not symbol:
+        raise ValueError("Invalid symbol")
+    if not symbol["candles"] or len(symbol["candles"]) < 1:
+        raise ValueError("Candles property does not exist or is empty")
+    return symbol["candles"]
+
+
+@app.route("/<collection>/<symbol>/rsi/<window>", methods=["GET"])
 def get_rsi(collection, symbol, window):
     """_summary_
 
@@ -51,21 +93,16 @@ def get_rsi(collection, symbol, window):
         except ValueError:
             raise ValueError("Invalid n")
 
-        # TODO make this reusable
-        if collection not in collections:
-            raise ValueError("Invalid collection")
-        symbol = collections[collection].find_one({"symbol": symbol})
-        if not symbol:
-            raise ValueError("Invalid symbol")
-        if not symbol["candles"] or len(symbol["candles"]) < window:
+        candles = query_candle(collection, symbol)
+        if len(candles) < window:
             raise ValueError("Not enough candles")
 
-
-        dataframe = pd.DataFrame(list(symbol["candles"]))
+        dataframe = pd.DataFrame(candles)
         dataframe["rsi"] = rsi(close=dataframe["close"], window=window, fillna=True)
         return dataframe[["rsi", "datetime"]].to_json(orient="records")
-    except Exception as e:
-        return jsonify(error=str(e)), 500
+    except Exception as exception:
+        return jsonify(error=str(exception)), 500
+
 
 @app.route("/create", methods=["POST"])
 def create():
@@ -100,3 +137,7 @@ def update(id):
 
     # Return success message
     return jsonify({"message": "Data updated successfully", "id": id})
+
+
+if __name__ == "__main__":
+    app.run(debug=True)
