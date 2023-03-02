@@ -75,7 +75,7 @@ def query_candle(collection, symbol_name):
         raise ValueError("Invalid symbol")
     if not symbol["candles"] or len(symbol["candles"]) < 1:
         raise ValueError("Candles property does not exist or is empty")
-    return symbol["candles"]
+    return pd.DataFrame(symbol["candles"])
 
 
 @app.route("/<collection>/<symbol>/rsi/<window>", methods=["GET"])
@@ -100,10 +100,9 @@ def get_rsi(collection, symbol, window):
         if len(candles) < window:
             raise ValueError("Not enough candles")
 
-        dataframe = pd.DataFrame(candles)
-        dataframe["rsi"] = rsi(close=dataframe["close"], window=window, fillna=True)
-        # dataframe = dropna(dataframe)
-        return dataframe[["rsi", "datetime"]].to_json(orient="records")
+        candles["rsi"] = rsi(close=candles["close"], window=window, fillna=True)
+        # candles = dropna(candles)
+        return candles[["rsi", "datetime"]].to_json(orient="records")
     except Exception as exception:
         return jsonify(error=str(exception)), 500
 
@@ -134,10 +133,9 @@ def get_macd(collection, symbol, fast, slow, signal):
         if len(candles) < slow:
             raise ValueError("Not enough candles")
 
-        dataframe = pd.DataFrame(candles)
-        dataframe["macd"] = macd(close=dataframe["close"], fast=fast, slow=slow, signal=signal, fillna=True)
-        # dataframe = dropna(dataframe)
-        return dataframe[["macd", "datetime"]].to_json(orient="records")
+        candles["macd"] = macd(close=candles["close"], fast=fast, slow=slow, signal=signal, fillna=True)
+        # candles = dropna(candles)
+        return candles[["macd", "datetime"]].to_json(orient="records")
     except Exception as exception:
         return jsonify(error=str(exception)), 500
 
@@ -166,13 +164,39 @@ def get_bollinger(collection, symbol, window, std):
         if len(candles) < window:
             raise ValueError("Not enough candles")
 
-        dataframe = pd.DataFrame(candles)
-        dataframe["bollinger"] = bollinger(close=dataframe["close"], window=window, std=std, fillna=True)
-        # dataframe = dropna(dataframe)
-        return dataframe[["bollinger", "datetime"]].to_json(orient="records")
+        candles["bollinger"] = bollinger(close=candles["close"], window=window, std=std, fillna=True)
+        # candles = dropna(candles)
+        return candles[["bollinger", "datetime"]].to_json(orient="records")
     except Exception as exception:
         return jsonify(error=str(exception)), 500
 
+@app.route("/<collection>/<symbol>/maxprofit/<window>", methods=["GET"])
+def get_max_profit(collection, symbol, window):
+    """_summary_
+
+    Args:
+        collection (_type_): _description_
+        symbol (_type_): _description_
+        window (_type_): _description_
+
+    Returns:
+        _type_: _description_
+    """
+    try:
+        try:
+            window = int(window)
+        except ValueError:
+            raise ValueError("Invalid integer parameters passed", window)
+
+        candles = query_candle(collection, symbol)
+        if len(candles) < window:
+            raise ValueError("Not enough candles")
+
+        candles["maxprofit"] = candles["high"].rolling(window=window*-1).max()
+        candles = dropna(candles)
+        return candles[["maxprofit", "datetime"]].to_json(orient="records")
+    except Exception as exception:
+        return jsonify(error=str(exception)), 500
 
 if __name__ == "__main__":
     app.run(debug=True)
