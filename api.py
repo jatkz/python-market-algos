@@ -13,11 +13,14 @@ This module provides an api for candle metrics
 """
 
 import os
+
+
 from flask import Flask, jsonify
 from pymongo import MongoClient
 import pandas as pd
-from ta.momentum import rsi, macd
-from ta.volatility import bollinger
+from ta.momentum import rsi
+from ta.trend import macd
+from ta.volatility import BollingerBands
 from ta.utils import dropna
 
 
@@ -133,7 +136,9 @@ def get_macd(collection, symbol, fast, slow, signal):
         if len(candles) < slow:
             raise ValueError("Not enough candles")
 
-        candles["macd"] = macd(close=candles["close"], fast=fast, slow=slow, signal=signal, fillna=True)
+        candles["macd"] = macd(
+            close=candles["close"], fast=fast, slow=slow, signal=signal, fillna=True
+        )
         # candles = dropna(candles)
         return candles[["macd", "datetime"]].to_json(orient="records")
     except Exception as exception:
@@ -164,11 +169,18 @@ def get_bollinger(collection, symbol, window, std):
         if len(candles) < window:
             raise ValueError("Not enough candles")
 
-        candles["bollinger"] = bollinger(close=candles["close"], window=window, std=std, fillna=True)
+        bb = BollingerBands(
+            close=candles["close"], window=window, window_dev=std, fillna=True
+        )
+        candles["bollinger_high"] = bb.bollinger_hband()
+        candles["bollinger_low"] = bb.bollinger_lband()
+        # other ones ^^^
+        # candles["bollinger"] =
         # candles = dropna(candles)
         return candles[["bollinger", "datetime"]].to_json(orient="records")
     except Exception as exception:
         return jsonify(error=str(exception)), 500
+
 
 @app.route("/<collection>/<symbol>/maxpump/<window>", methods=["GET"])
 def get_max_pump(collection, symbol, window):
@@ -192,12 +204,13 @@ def get_max_pump(collection, symbol, window):
         if len(candles) < window:
             raise ValueError("Not enough candles")
 
-        candles["maxhigh"] = candles["high"].rolling(window=window*-1).max()
+        candles["maxhigh"] = candles["high"].rolling(window=window * -1).max()
         candles["maxpump"] = (candles["maxhigh"] - candles["close"]) / candles["close"]
         candles = dropna(candles)
         return candles[["maxpump", "datetime"]].to_json(orient="records")
     except Exception as exception:
         return jsonify(error=str(exception)), 500
+
 
 @app.route("/<collection>/<symbol>/maxdump/<window>", methods=["GET"])
 def get_max_dump(collection, symbol, window):
@@ -221,12 +234,13 @@ def get_max_dump(collection, symbol, window):
         if len(candles) < window:
             raise ValueError("Not enough candles")
 
-        candles["minlow"] = candles["low"].rolling(window=window*-1).min()
+        candles["minlow"] = candles["low"].rolling(window=window * -1).min()
         candles["maxdump"] = (candles["minlow"] - candles["close"]) / candles["close"]
         candles = dropna(candles)
         return candles[["maxdump", "datetime"]].to_json(orient="records")
     except Exception as exception:
         return jsonify(error=str(exception)), 500
+
 
 if __name__ == "__main__":
     app.run(debug=True)

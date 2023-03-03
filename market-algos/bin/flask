@@ -1,4 +1,4 @@
-#!/Users/jaredt/Sites/python-market-algos/market-algos/bin/python3.10
+#!/home/jatks/proj/trade-algos-datasets/market-algos/bin/python3
 # -*- coding: utf-8 -*-
 import re
 import sys
