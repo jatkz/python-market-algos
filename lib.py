@@ -1,3 +1,8 @@
+"""
+Library of functions for the project
+    Returns:
+        _type_: _description_
+"""
 import pandas as pd
 
 
